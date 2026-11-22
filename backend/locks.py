@@ -1,11 +1,13 @@
 """笼锁与争用登记（公共并发面）。"""
 from __future__ import annotations
 
+from contextlib import contextmanager
+
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from auth import AuthHeader, require_user, require_writer
-from db import connect, now_iso, write_audit
+from db import begin_immediate, connect, now_iso, write_audit
 
 router = APIRouter(tags=["locks"])
 
@@ -48,6 +50,29 @@ def require_lock(conn, lock_key: str, holder: str) -> None:
         raise HTTPException(409, "争用：后到只记争用，不写业务")
 
 
+@contextmanager
+def cage_write_guard(conn, lock_key: str, holder: str):
+    """写口统一笼锁守卫。
+
+    - 进入即 BEGIN IMMEDIATE 拿库级写锁，再抢业务笼锁；
+    - 抢锁失败：争用痕随事务提交保留，抛 409 且不写业务；
+    - 请求前已持有的锁在退出时释放；请求内新抢到的锁保留（持锁处理中），
+      使同笼并发的后到请求在下一事务里稳定看到锁并只留争用痕。
+    """
+    held_before = conn.execute(
+        "SELECT 1 FROM cage_locks WHERE lock_key=? AND holder=?",
+        (lock_key, holder),
+    ).fetchone()
+    begin_immediate(conn)
+    try:
+        require_lock(conn, lock_key, holder)
+        yield
+    finally:
+        if held_before:
+            release(conn, lock_key, holder)
+        conn.commit()
+
+
 @router.get("/api/locks")
 def list_locks(authorization: AuthHeader = None):
     require_user(authorization)
@@ -72,6 +97,7 @@ def list_contention(authorization: AuthHeader = None):
 def acquire_lock(body: LockIn, authorization: AuthHeader = None):
     user = require_writer(authorization)
     with connect() as conn:
+        begin_immediate(conn)
         ok = try_acquire(conn, body.lock_key, user)
         write_audit(
             conn,

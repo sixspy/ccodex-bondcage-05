@@ -31,6 +31,20 @@
 
 开户入金 → 按合约入笼冻结（笼代）→ 履约核验通过 → 解笼拨付到收款方 / 违约罚没 → 笼代余额与拨付+罚没对账
 
+## 核验升代（乙路径，2026-11-22 当日锁死）
+
+命运说明见 [`docs/核验升代命运说明.md`](docs/核验升代命运说明.md)，代码单一事实源为
+`backend/generation_policy.py`（`PATH_CODE="B"`）：
+
+- 票号 `ATT-{笼号}-g{代}` 全表唯一；`cages.current_ticket_ref` 是解笼/罚没唯一认票指针。
+- `POST /api/cages/{id}/generation-upgrade`：笼锁内笼代+1、状态回「已冻结」、指针置空，
+  旧票留史只读（查询口可查、标 `current=false`），新材料重裁落新票后指针切新票。
+- 解笼/罚没写口只认当前指针：旧票号提交即记 `generation_deviation` 并 409 拒写；
+  指针为空（升代后未重裁）同样拒写。未升代的笼行为零变化。
+- 同笼双会话升代抢 `cage:{id}` 锁，后到者只留 `contention_log` 争用痕、笼代只跳一次；
+  本代已有解笼/罚没落账禁止升代抹账。
+- 只读声明：`GET /api/generation-fate`；升代流水：`GET /api/generation-events`。
+
 ## 互斥切口候选
 
 - 解笼失败整笔回滚 vs 影子拨付后晋升

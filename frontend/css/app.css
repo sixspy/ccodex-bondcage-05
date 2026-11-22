@@ -361,3 +361,11 @@ th {
   margin-bottom: 12px;
   font-size: 13px;
 }
+
+/* 升代偏航留痕行：审计页一眼可辨 */
+.deviation-row {
+  background: #fee2e2;
+}
+.deviation-row code {
+  color: var(--bad);
+}

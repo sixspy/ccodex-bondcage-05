@@ -44,6 +44,13 @@ export function createApi(getToken, onUnauthorized) {
     attestations: () => req("/api/attestations"),
     attest: (data) =>
       req("/api/attestations", { method: "POST", body: JSON.stringify(data) }),
+    upgradeGeneration: (cageId, data) =>
+      req(`/api/cages/${cageId}/generation-upgrade`, {
+        method: "POST",
+        body: JSON.stringify(data),
+      }),
+    generationEvents: () => req("/api/generation-events"),
+    generationFate: () => req("/api/generation-fate"),
     releases: () => req("/api/releases"),
     release: (data) =>
       req("/api/releases", { method: "POST", body: JSON.stringify(data) }),

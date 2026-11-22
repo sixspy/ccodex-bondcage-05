@@ -38,6 +38,16 @@ def connect() -> sqlite3.Connection:
     return conn
 
 
+def begin_immediate(conn: sqlite3.Connection) -> None:
+    """写口统一入口：先抢库级保留写锁，再抢业务笼锁。
+
+    SQLite 默认延迟事务下，两个并发写口可能各自先读后写、双双插入成功；
+    BEGIN IMMEDIATE 让后到者在事务起点即排队/超时，保证同笼写口串行化，
+    笼锁（cage_locks）的争用判定才具备并发正确性。
+    """
+    conn.execute("BEGIN IMMEDIATE")
+
+
 def sha_password(password: str) -> str:
     import hashlib
 
@@ -159,7 +169,61 @@ CREATE TABLE IF NOT EXISTS deposit_ledger(
   created_at TEXT NOT NULL,
   actor TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS generation_events(
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  cage_id INTEGER NOT NULL,
+  from_generation INTEGER NOT NULL,
+  to_generation INTEGER NOT NULL,
+  old_ticket_ref TEXT,
+  new_ticket_ref TEXT,
+  reason TEXT NOT NULL,
+  officer TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  FOREIGN KEY(cage_id) REFERENCES cages(id)
+);
 """
+
+# 乙路径升代幂等迁移：库文件不换，只补列/补表。
+# - cages.current_ticket_ref：当前有效票指针，解笼/罚没唯一认票口径
+# - attestations.attest_ref：票号 ATT-{cage_code}-g{gen}
+MIGRATIONS = (
+    (
+        "cages",
+        "current_ticket_ref",
+        "ALTER TABLE cages ADD COLUMN current_ticket_ref TEXT",
+    ),
+    (
+        "attestations",
+        "attest_ref",
+        "ALTER TABLE attestations ADD COLUMN attest_ref TEXT",
+    ),
+)
+
+
+def _apply_migrations(conn: sqlite3.Connection) -> None:
+    for table, column, ddl in MIGRATIONS:
+        cols = {r["name"] for r in conn.execute(f"PRAGMA table_info({table})")}
+        if column not in cols:
+            conn.execute(ddl)
+    # 历史数据回填票号与当前指针（旧库升级时保持旧代零改语义）
+    rows = conn.execute(
+        """SELECT a.id, a.attest_gen, c.cage_code, c.generation, c.id AS cage_id
+           FROM attestations a JOIN cages c ON c.id=a.cage_id"""
+    ).fetchall()
+    for r in rows:
+        ref = f"ATT-{r['cage_code']}-g{int(r['attest_gen'])}"
+        conn.execute(
+            "UPDATE attestations SET attest_ref=? WHERE id=? AND attest_ref IS NULL",
+            (ref, r["id"]),
+        )
+        if int(r["attest_gen"]) == int(r["generation"]):
+            conn.execute(
+                "UPDATE cages SET current_ticket_ref=? WHERE id=? AND current_ticket_ref IS NULL",
+                (ref, r["cage_id"]),
+            )
+    conn.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_attest_ref ON attestations(attest_ref)"
+    )
 
 
 def write_audit(conn: sqlite3.Connection, actor: str, action: str, target: str, payload: dict) -> None:
@@ -272,6 +336,7 @@ def seed_attest_samples(conn: sqlite3.Connection) -> None:
 def init_db() -> None:
     with connect() as conn:
         conn.executescript(SCHEMA)
+        _apply_migrations(conn)
         seed_users(conn)
         seed_bonds(conn)
         seed_cages(conn)

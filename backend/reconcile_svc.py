@@ -44,6 +44,7 @@ def _reconcile_cage(conn, cage) -> dict:
         "contract_no": cage["contract_no"],
         "generation": gen,
         "status": cage["status"],
+        "current_ticket_ref": cage["current_ticket_ref"],
         "amount": amount,
         "available": available,
         "released": float(released),

@@ -48,6 +48,8 @@ createApp({
     const selectedCage = ref(null);
     const topupJobs = ref([]);
     const splitJobs = ref([]);
+    const generationEvents = ref([]);
+    const fate = ref(null);
 
     const bondForm = ref({
       party_key: "P-NEW",
@@ -71,15 +73,18 @@ createApp({
       outcome: "通过",
       evidence: "验收合格",
     });
+    const upgradeForm = ref({ cage_id: 0, reason: "新材料复验，申请重裁" });
     const releaseForm = ref({
       cage_id: 0,
       amount: null,
       payee: "",
+      ticket_ref: "",
     });
     const forfeitForm = ref({
       cage_id: 0,
       amount: null,
       reason: "履约违约",
+      ticket_ref: "",
     });
     const topupForm = ref({
       cage_id: 0,
@@ -126,6 +131,14 @@ createApp({
       if (s.includes("违约") || s.includes("罚没")) return "fail";
       if (s.includes("冻结")) return "frozen";
       return "done";
+    }
+
+    // 五页同源：票号一律从后端核验票册反查，前端不得拼造
+    function ticketOf(cageId, generation) {
+      const hit = attestations.value.find(
+        (a) => a.cage_id === cageId && a.attest_gen === generation
+      );
+      return hit ? hit.attest_ref : "—";
     }
 
     const frozenCages = computed(() =>
@@ -195,6 +208,8 @@ createApp({
           lk,
           tj,
           sj,
+          ge,
+          ft,
         ] = await Promise.all([
           api.bonds(),
           api.cages(),
@@ -207,6 +222,8 @@ createApp({
           api.locks(),
           api.topupJobs(),
           api.splitJobs(),
+          api.generationEvents(),
+          api.generationFate(),
         ]);
         bonds.value = b.items || [];
         cages.value = c.items || [];
@@ -219,6 +236,8 @@ createApp({
         locks.value = lk.items || [];
         topupJobs.value = tj.items || [];
         splitJobs.value = sj.items || [];
+        generationEvents.value = ge.items || [];
+        fate.value = ft || null;
         if (!attestForm.value.cage_id && frozenCages.value.length) {
           attestForm.value.cage_id = frozenCages.value[0].id;
         }
@@ -310,6 +329,21 @@ createApp({
       }
     }
 
+    async function doUpgradeGeneration() {
+      clearFlash();
+      try {
+        if (!upgradeForm.value.cage_id) throw new Error("请选择笼");
+        const row = await api.upgradeGeneration(upgradeForm.value.cage_id, {
+          reason: upgradeForm.value.reason,
+          path: "B",
+        });
+        flashOk(`已升代至第 ${row.generation} 代，旧票留史只读，待新材料重裁`);
+        await refresh();
+      } catch (e) {
+        flashErr(e);
+      }
+    }
+
     async function doRelease() {
       clearFlash();
       try {
@@ -317,6 +351,7 @@ createApp({
         const payload = { cage_id: releaseForm.value.cage_id };
         if (releaseForm.value.amount) payload.amount = releaseForm.value.amount;
         if (releaseForm.value.payee) payload.payee = releaseForm.value.payee;
+        if (releaseForm.value.ticket_ref) payload.ticket_ref = releaseForm.value.ticket_ref;
         const row = await api.release(payload);
         flashOk(`拨付成功 ${row.release_ref}`);
         await refresh();
@@ -334,6 +369,7 @@ createApp({
           reason: forfeitForm.value.reason,
         };
         if (forfeitForm.value.amount) payload.amount = forfeitForm.value.amount;
+        if (forfeitForm.value.ticket_ref) payload.ticket_ref = forfeitForm.value.ticket_ref;
         const row = await api.forfeit(payload);
         flashOk(`罚没成功 ${row.forfeit_ref}`);
         await refresh();
@@ -417,10 +453,13 @@ createApp({
       selectedCage,
       topupJobs,
       splitJobs,
+      generationEvents,
+      fate,
       bondForm,
       depositForm,
       freezeForm,
       attestForm,
+      upgradeForm,
       releaseForm,
       forfeitForm,
       topupForm,
@@ -434,12 +473,14 @@ createApp({
       fmt,
       shortStatus,
       statusClass,
+      ticketOf,
       openBond,
       deposit,
       loadBondDetail,
       freezeCage,
       selectCage,
       doAttest,
+      doUpgradeGeneration,
       doRelease,
       doForfeit,
       loadReconcile,

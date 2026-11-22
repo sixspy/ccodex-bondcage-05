@@ -47,6 +47,7 @@ export const cagesViewTemplate = `
           <div class="code">{{ c.cage_code }}</div>
           <div class="amt">{{ fmt(c.available) }} / {{ fmt(c.amount) }}</div>
           <div>{{ c.contract_no }} · 代{{ c.generation }}</div>
+          <div>当前票：<code>{{ c.current_ticket_ref || '未出票（待核验）' }}</code></div>
           <div>{{ c.party_key }} → {{ c.beneficiary }}</div>
         </div>
       </div>
@@ -58,10 +59,38 @@ export const cagesViewTemplate = `
       <thead><tr><th>字段</th><th>值</th></tr></thead>
       <tbody>
         <tr><td>状态</td><td><span class="badge" :class="statusClass(cageDetail.cage.status)">{{ cageDetail.cage.status }}</span></td></tr>
+        <tr><td>笼代</td><td>第 {{ cageDetail.cage.generation }} 代</td></tr>
+        <tr><td>当前票指针</td><td><code>{{ cageDetail.cage.current_ticket_ref || '空（升代后待重裁）' }}</code></td></tr>
         <tr><td>可用 / 总额</td><td>{{ fmt(cageDetail.cage.available) }} / {{ fmt(cageDetail.cage.amount) }}</td></tr>
-        <tr><td>核验条数</td><td>{{ cageDetail.attestations.length }}</td></tr>
+        <tr><td>核验票数（含旧代史迹）</td><td>{{ cageDetail.attestations.length }}</td></tr>
         <tr><td>拨付条数</td><td>{{ cageDetail.releases.length }}</td></tr>
         <tr><td>罚没条数</td><td>{{ cageDetail.forfeits.length }}</td></tr>
+      </tbody>
+    </table>
+    <h3 style="margin-top:14px">笼内票册（同源）</h3>
+    <table>
+      <thead><tr><th>票号</th><th>代</th><th>结论</th><th>效力</th><th>核验员</th></tr></thead>
+      <tbody>
+        <tr v-for="a in cageDetail.attestations" :key="a.id">
+          <td><code>{{ a.attest_ref }}</code></td>
+          <td>{{ a.attest_gen }}</td>
+          <td>{{ a.outcome }}</td>
+          <td><span class="badge" :class="a.current ? 'pass' : 'done'">{{ a.current ? '当前票' : '旧代史迹·只读' }}</span></td>
+          <td>{{ a.officer }}</td>
+        </tr>
+      </tbody>
+    </table>
+    <h3 style="margin-top:14px" v-if="cageDetail.generation_events && cageDetail.generation_events.length">升代事件</h3>
+    <table v-if="cageDetail.generation_events && cageDetail.generation_events.length">
+      <thead><tr><th>代际</th><th>旧票</th><th>理由</th><th>经办人</th><th>时间</th></tr></thead>
+      <tbody>
+        <tr v-for="g in cageDetail.generation_events" :key="g.id">
+          <td>g{{ g.from_generation }} → g{{ g.to_generation }}</td>
+          <td><code>{{ g.old_ticket_ref || '—' }}</code></td>
+          <td>{{ g.reason }}</td>
+          <td>{{ g.officer }}</td>
+          <td>{{ g.created_at }}</td>
+        </tr>
       </tbody>
     </table>
   </div>

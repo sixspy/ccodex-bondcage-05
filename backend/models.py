@@ -34,12 +34,19 @@ class ReleaseIn(BaseModel):
     cage_id: int
     amount: float | None = None
     payee: str | None = None
+    ticket_ref: str | None = None
 
 
 class ForfeitIn(BaseModel):
     cage_id: int
     amount: float | None = None
     reason: str = "履约违约"
+    ticket_ref: str | None = None
+
+
+class GenerationUpgradeIn(BaseModel):
+    reason: str = Field(min_length=2, max_length=256)
+    path: str = "B"
 
 
 class TopupIn(BaseModel):

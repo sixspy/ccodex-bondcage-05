@@ -21,7 +21,7 @@ export const reconcileViewTemplate = `
   <table>
     <thead>
       <tr>
-        <th>笼</th><th>代</th><th>状态</th><th>总额</th><th>可用</th>
+        <th>笼</th><th>代</th><th>状态</th><th>当前票指针</th><th>总额</th><th>可用</th>
         <th>拨付</th><th>罚没</th><th>合计</th><th>平衡</th><th>缺口</th>
       </tr>
     </thead>
@@ -30,6 +30,7 @@ export const reconcileViewTemplate = `
         <td>{{ i.cage_code }}</td>
         <td>{{ i.generation }}</td>
         <td>{{ i.status }}</td>
+        <td><code>{{ i.current_ticket_ref || '空（升代待重裁）' }}</code></td>
         <td>{{ fmt(i.amount) }}</td>
         <td>{{ fmt(i.available) }}</td>
         <td>{{ fmt(i.released) }}</td>
